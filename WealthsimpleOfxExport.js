@@ -12,27 +12,27 @@
 // ==/UserScript==
 
 /**
-     * @callback ReadyPredicate
-     * @returns {boolean}
-     */
+ * @callback ReadyPredicate
+ * @returns {boolean}
+ */
 
 /**
-     * @typedef {Object} PageInfo
-     * @property {"account-details" | "activity" | null} pageType
-     * @property {HTMLElement?} anchor - Element to which buttons will be "attached". Buttons should be inserted before it.
-     * @property {ReadyPredicate?} readyPredicate - Verifies if ready to insert
-     */
+ * @typedef {Object} PageInfo
+ * @property {"account-details" | "activity" | null} pageType
+ * @property {HTMLElement?} anchor - Element to which buttons will be "attached". Buttons should be inserted before it.
+ * @property {ReadyPredicate?} readyPredicate - Verifies if ready to insert
+ */
 
 /**
-     * Figures out which paget we're currently on and where to attach buttons. Should not do any queries,
-     * because it gets spammed executed by MutationObserver.
-     *
-     * @returns {PageInfo}
-     */
+ * Figures out which paget we're currently on and where to attach buttons. Should not do any queries,
+ * because it gets spammed executed by MutationObserver.
+ *
+ * @returns {PageInfo}
+ */
 function getPageInfo() {
     /**
-       * @type PageInfo
-       */
+     * @type PageInfo
+     */
     let emptyInfo = {
         pageType: null,
         anchor: null,
@@ -44,33 +44,26 @@ function getPageInfo() {
     let pathParts = window.location.pathname.split("/");
     if (pathParts.length === 4 && pathParts[2] === "account-details") {
         // All classes within HTML have been obfuscated/minified, using icons as a starting point, in hope that they don't change that much.
-        const threeDotsSvgPath =
-              "M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM19 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2ZM5 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z";
-        const threeDotsButtonContainerQuery = `div:has(> div > button svg > path[d="${threeDotsSvgPath}"])`;
-
+        const accountSelectorQuery = `div:has(> div > button svg > path[d="M5.363 3.363a.9.9 0 0 1 1.274 0l4 4a.9.9 0 0 1 0 1.274l-4 4a.9.9 0 0 1-1.274-1.274L8.727 8 5.363 4.637a.9.9 0 0 1 0-1.274Z"])`;
         info.pageType = "account-details";
-        let anchor = document.querySelectorAll(threeDotsButtonContainerQuery);
+        let anchor = document.querySelectorAll(accountSelectorQuery);
         if (anchor.length !== 1) {
             return emptyInfo;
         }
         info.anchor = anchor[0];
         info.readyPredicate = () => info.anchor.parentNode.children.length >= 1;
     } else if (pathParts.length === 3 && pathParts[2] === "activity") {
-        const threeLinesSvgPath = "M2 4h12M4.667 8h6.666m-4.666 4h2.666";
-        const threeLinesButtonContainerQuery = `div:has(> button svg > path[d="${threeLinesSvgPath}"])`;
-
         info.pageType = "activity";
-        let anchor = document.querySelectorAll(threeLinesButtonContainerQuery);
-        if (anchor.length !== 1) {
+        let anchor = Array.from(document.querySelectorAll(`h1`)).find(el => el.textContent === "Activity");
+        if (anchor === undefined) {
             return emptyInfo;
         }
-        info.anchor = anchor[0];
+        info.anchor = anchor;
         info.readyPredicate = () => info.anchor.parentNode.children.length >= 1;
     } else {
         // Didn't match any expected page
         return emptyInfo;
     }
-
     return info;
 }
 
@@ -78,11 +71,11 @@ function getPageInfo() {
 const exportCsvId = "export-transactions-csv";
 
 /**
-     * Keeps button shown after rerenders and href changes
-     *
-     * @returns {Promise<void>}
-     */
-async function keepButtonShown() {
+ * Keeps button shown after rerenders and href changes
+ *
+ * @returns {void}
+ */
+function keepButtonShown() {
     // Early exit, to avoid unnecessary requests if already injected
     if (document.querySelector(`div#${exportCsvId}`)) {
         return;
@@ -103,7 +96,7 @@ async function keepButtonShown() {
 (async function () {
     const observer = new MutationObserver(async (mutations) => {
         for (const _ of mutations) {
-            await keepButtonShown();
+            keepButtonShown();
         }
     });
     observer.observe(document.documentElement, {
@@ -111,54 +104,36 @@ async function keepButtonShown() {
         subtree: true,
     });
 
+    window.matchMedia("(prefers-color-scheme: dark)").addListener(async e => {
+        // Give react / whatever weird frontend framework time to update classes before copying them
+        await new Promise(res => setTimeout(res, 100));
+        themeButtons();
+    });
+
     // Try running on load if there are no mutations for some reason
     window.addEventListener("load", async () => {
-        await keepButtonShown();
+        keepButtonShown();
     });
 })();
 
 /**
-     * Stub, just forcing neovim to corectly highlight CSS syntax in literal
-     */
-function css(str) {
-    return str;
+ * Matches light/dark theme by stealing styling from profile settings dropdown button
+ */
+function themeButtons() {
+    let buttons = document.querySelectorAll(`button.export-csv-button`);
+    let profileButton = document.querySelector(`button:has(svg > path[d="M12 6a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"])`);
+    for (const button of buttons) {
+        button.className = ["export-csv-button", profileButton.className].join(" ");
+    }
 }
 
-const stylesheet = new CSSStyleSheet();
-stylesheet.insertRule(css`
-      .export-csv-button:hover {
-        color: rgb(201, 198, 196);
-        background-image: linear-gradient(
-          0deg,
-          rgba(0, 0, 0, 0.04) 0%,
-          rgba(0, 0, 0, 0.04) 100%
-        );
-      }
-    `);
-stylesheet.insertRule(css`
-      .export-csv-button {
-        display: inline-flex;
-        color: rgb(201, 198, 196);
-        background-color: rgba(255, 255, 255, 0.12);
-        border: 0px;
-        border-radius: 4.5em;
-        font-size: 16px;
-        padding-left: 1em;
-        padding-right: 1em;
-        font-family: inherit;
-        font-weight: unset;
-      }
-    `);
-
 /**
-     * Attaches button row to anchor element. Should be syncronous to avoid attaching row twice, because Mutex is not cool enough for JS?
-     *
-     * @param {PageInfo} pageInfo
-     * @returns {void}
-     */
+ * Attaches button row to anchor element. Should be syncronous to avoid attaching row twice, because Mutex is not cool enough for JS?
+ *
+ * @param {PageInfo} pageInfo
+ * @returns {void}
+ */
 function addButtons(pageInfo) {
-    document.adoptedStyleSheets = [stylesheet];
-
     let buttonRow = document.createElement("div");
     buttonRow.id = exportCsvId;
     buttonRow.style.display = "flex";
@@ -224,41 +199,22 @@ function addButtons(pageInfo) {
         buttonRow.appendChild(exportButton);
     }
 
-
-    let anchorParent = pageInfo.anchor.parentNode;
-    anchorParent.insertBefore(buttonRow, pageInfo.anchor);
-    anchorParent.style.gap = "1em";
+    pageInfo.anchor.after(buttonRow);
+    pageInfo.anchor.parentNode.style.gap = "1em";
     pageInfo.anchor.style.marginLeft = "0";
 
-    let currencyToggle = anchorParent.querySelector(
-        `div:has(> ul > li > button)`,
-    );
-    if (currencyToggle) {
-        // NOTE: Patch to currency toggle, for some reason it sets width="100%", and it's ugly
-        for (const s of document.styleSheets) {
-            for (const r of s.rules) {
-                if (
-                    currencyToggle.matches(r.selectorText) &&
-                    r.style.width === "100%"
-                ) {
-                    currencyToggle.classList.remove(r.selectorText.substring(1));
-                }
-            }
-        }
-        // NOTE: Swap with currency toggle, just looks nicer
-        buttonRow.parentNode.insertBefore(buttonRow, currencyToggle);
-    }
+    themeButtons();
 }
 
 /**
-     * @typedef {Object} OauthCookie
-     * @property {string} access_token
-     * @property {string} identity_canonical_id
-     */
+ * @typedef {Object} OauthCookie
+ * @property {string} access_token
+ * @property {string} identity_canonical_id
+ */
 
 /**
-     * @returns {OauthCookie}
-     */
+ * @returns {OauthCookie}
+ */
 function getOauthCookie() {
     let decodedCookie = decodeURIComponent(document.cookie).split(";");
     for (let cookieKV of decodedCookie) {
@@ -271,27 +227,27 @@ function getOauthCookie() {
 }
 
 /**
-     * Subset of ActivityFeedItem type in GraphQL API
-     *
-     * @typedef {Object} Transaction
-     * @property {string} accountId
-     * @property {string} externalCanonicalId
-     * @property {string} amount
-     * @property {string} amountSign
-     * @property {string} occurredAt
-     * @property {string} type
-     * @property {string} subType
-     * @property {string?} eTransferEmail
-     * @property {string?} eTransferName
-     * @property {string?} assetSymbol
-     * @property {string?} assetQuantity
-     * @property {string?} aftOriginatorName
-     * @property {string?} aftTransactionCategory
-     * @property {string?} opposingAccountId
-     * @property {string?} spendMerchant
-     * @property {string?} billPayCompanyName
-     * @property {string?} billPayPayeeNickname
-     */
+ * Subset of ActivityFeedItem type in GraphQL API
+ *
+ * @typedef {Object} Transaction
+ * @property {string} accountId
+ * @property {string} externalCanonicalId
+ * @property {string} amount
+ * @property {string} amountSign
+ * @property {string} occurredAt
+ * @property {string} type
+ * @property {string} subType
+ * @property {string?} eTransferEmail
+ * @property {string?} eTransferName
+ * @property {string?} assetSymbol
+ * @property {string?} assetQuantity
+ * @property {string?} aftOriginatorName
+ * @property {string?} aftTransactionCategory
+ * @property {string?} opposingAccountId
+ * @property {string?} spendMerchant
+ * @property {string?} billPayCompanyName
+ * @property {string?} billPayPayeeNickname
+ */
 
 const activityFeedItemFragment = `
       fragment Activity on ActivityFeedItem {
@@ -378,11 +334,11 @@ const fetchActivityListQuery = `
     `;
 
 /**
-     * API used by account specific activity view.
-     * Seems like it's just outdated API, will use it just as safetyguard
-     *
-     * @returns {Promise<[Transaction]>}
-     */
+ * API used by account specific activity view.
+ * Seems like it's just outdated API, will use it just as safetyguard
+ *
+ * @returns {Promise<[Transaction]>}
+ */
 async function activityList(accountIds, startDate) {
     let transactions = [];
     let hasNextPage = true;
@@ -451,9 +407,9 @@ const fetchActivityFeedItemsQuery = `
     `;
 
 /**
-     * API used by activity feed page.
-     * @returns {Promise<[Transaction]>}
-     */
+ * API used by activity feed page.
+ * @returns {Promise<[Transaction]>}
+ */
 async function activityFeedItems(accountIds, startDate) {
     let transactions = [];
     let hasNextPage = true;
@@ -528,15 +484,15 @@ const fetchAllAccountFinancialsQuery = `
     `;
 
 /**
-     * @typedef {Object} AccountInfo
-     * @property {string} id
-     * @property {string} nickname
-     */
+ * @typedef {Object} AccountInfo
+ * @property {string} id
+ * @property {string} nickname
+ */
 
 /**
-     * Query all accounts
-     * @returns {Promise<[AccountInfo]>}
-     */
+ * Query all accounts
+ * @returns {Promise<[AccountInfo]>}
+ */
 async function accountFinancials() {
     let oauthCookie = getOauthCookie();
     let respJson = await GM.xmlHttpRequest({
@@ -567,6 +523,8 @@ async function accountFinancials() {
         if (!nickname) {
             if (e.node.unifiedAccountType === "CASH") {
                 nickname = "Cash";
+            } else if (e.node.unifiedAccountType === "CREDIT_CARD") {
+                nickname = "Credit Card";
             } else if (self_directed_re.test(e.node.unifiedAccountType)) {
                 let found = e.node.unifiedAccountType.match(self_directed_re);
                 nickname = found.groups.name;
@@ -588,20 +546,20 @@ async function accountFinancials() {
 }
 
 /**
-     * @typedef {Object} TransferInfo
-     * @property {string} id
-     * @property {string} status
-     * @property {{"bankAccount": BankInfo}} source
-     * @property {{"bankAccount": BankInfo}} destination
-     */
+ * @typedef {Object} TransferInfo
+ * @property {string} id
+ * @property {string} status
+ * @property {{"bankAccount": BankInfo}} source
+ * @property {{"bankAccount": BankInfo}} destination
+ */
 
 /**
-     * @typedef {Object} BankInfo
-     * @property {string} accountName
-     * @property {string} accountNumber
-     * @property {string} institutionName
-     * @property {string} nickname
-     */
+ * @typedef {Object} BankInfo
+ * @property {string} accountName
+ * @property {string} accountNumber
+ * @property {string} institutionName
+ * @property {string} nickname
+ */
 
 const fetchFundsTransferQuery = `
       query FetchFundsTransfer($id: ID!) {
@@ -639,9 +597,9 @@ const fetchFundsTransferQuery = `
     `;
 
 /**
-     * @param {string} transferId
-     * @returns {Promise<TransferInfo>}
-     */
+ * @param {string} transferId
+ * @returns {Promise<TransferInfo>}
+ */
 async function fundsTransfer(transferId) {
     let respJson = await GM.xmlHttpRequest({
         url: "https://my.wealthsimple.com/graphql",
@@ -717,8 +675,8 @@ async function transactionsToOfxBlobs(transactions, accountNicknames) {
 
         // Check if any transaction in this account is a credit card transaction
         const hasCreditCardTransactions = accTransactions[acc].some(t =>
-                                                                    t.type === "CREDIT_CARD" || (t.type && t.type.startsWith("CREDIT_CARD"))
-                                                                   );
+            t.type === "CREDIT_CARD" || (t.type && t.type.startsWith("CREDIT_CARD"))
+        );
 
         if (hasCreditCardTransactions) {
             accountType = "CREDIT_CARD"; // Override with credit card type
@@ -744,8 +702,8 @@ async function transactionsToOfxBlobs(transactions, accountNicknames) {
 function determineOfxAccountType(accountType, transactions) {
     // First check if any transactions indicate this is a credit card account
     const hasCreditCardTransactions = transactions && transactions.some(t =>
-                                                                        t.type === "CREDIT_CARD" || (t.type && t.type.startsWith("CREDIT_CARD"))
-                                                                       );
+        t.type === "CREDIT_CARD" || (t.type && t.type.startsWith("CREDIT_CARD"))
+    );
 
     if (hasCreditCardTransactions) {
         return "CREDITCARD";
@@ -881,9 +839,9 @@ NEWFILEUID:NONE
 <DTSTART>${startDate}
 <DTEND>${endDate}
 `;
-  } else if (ofxAccountType === "INVESTMENT") {
-      // For investment accounts, use INVSTMTMSGSRSV1
-      ofx += `<INVSTMTMSGSRSV1>
+    } else if (ofxAccountType === "INVESTMENT") {
+        // For investment accounts, use INVSTMTMSGSRSV1
+        ofx += `<INVSTMTMSGSRSV1>
 <INVSTMTTRNRS>
 <TRNUID>${Date.now()}
 <STATUS>
@@ -901,9 +859,9 @@ NEWFILEUID:NONE
 <DTSTART>${startDate}
 <DTEND>${endDate}
 `;
-  } else {
-      // Regular bank accounts
-      ofx += `<BANKMSGSRSV1>
+    } else {
+        // Regular bank accounts
+        ofx += `<BANKMSGSRSV1>
 <STMTTRNRS>
 <TRNUID>${Date.now()}
 <STATUS>
@@ -921,7 +879,7 @@ NEWFILEUID:NONE
 <DTSTART>${startDate}
 <DTEND>${endDate}
 `;
-  }
+    }
 
     // Process each transaction (rest of the function remains the same)
     for (const transaction of transactions) {
@@ -1134,25 +1092,25 @@ NEWFILEUID:NONE
 <TRNAMT>${amount}
 <FITID>${escapeXml(fitid)}
 `;
-        if (payee) ofx += `<NAME>${escapeXml(payee)}\n`;
-        if (memo) ofx += `<MEMO>${escapeXml(memo)}\n`;
-        ofx += `</STMTTRN>
+            if (payee) ofx += `<NAME>${escapeXml(payee)}\n`;
+            if (memo) ofx += `<MEMO>${escapeXml(memo)}\n`;
+            ofx += `</STMTTRN>
 </INVBANKTRAN>
 `;
-    } else {
-        // Regular transaction format
-        ofx += `<STMTTRN>
+        } else {
+            // Regular transaction format
+            ofx += `<STMTTRN>
 <TRNTYPE>${trnType}
 <DTPOSTED>${dateStr}
 <TRNAMT>${amount}
 <FITID>${escapeXml(fitid)}
 `;
-        if (payee) ofx += `<NAME>${escapeXml(payee)}\n`;
-        if (memo) ofx += `<MEMO>${escapeXml(memo)}\n`;
-        ofx += `</STMTTRN>
+            if (payee) ofx += `<NAME>${escapeXml(payee)}\n`;
+            if (memo) ofx += `<MEMO>${escapeXml(memo)}\n`;
+            ofx += `</STMTTRN>
 `;
+        }
     }
-  }
 
     // Close OFX structure based on account type
     if (isCreditCard) {
@@ -1165,8 +1123,8 @@ NEWFILEUID:NONE
 </CCSTMTTRNRS>
 </CREDITCARDMSGSRSV1>
 </OFX>`;
-  } else if (ofxAccountType === "INVESTMENT") {
-      ofx += `</INVTRANLIST>
+    } else if (ofxAccountType === "INVESTMENT") {
+        ofx += `</INVTRANLIST>
 <INVBAL>
 <AVAILCASH>0
 <MARGINBALANCE>0
@@ -1176,8 +1134,8 @@ NEWFILEUID:NONE
 </INVSTMTTRNRS>
 </INVSTMTMSGSRSV1>
 </OFX>`;
-  } else {
-      ofx += `</BANKTRANLIST>
+    } else {
+        ofx += `</BANKTRANLIST>
 <LEDGERBAL>
 <BALAMT>0
 <DTASOF>${nowStr}
@@ -1186,17 +1144,17 @@ NEWFILEUID:NONE
 </STMTTRNRS>
 </BANKMSGSRSV1>
 </OFX>`;
-  }
+    }
 
     return new Blob([ofx], { type: "application/x-ofx" });
 }
 
 
 /**
- * @param {{[string]: Blob}} accountBlobs
- * @param {[AccountInfo]} accountsInfo
- * @param {Date?} fromDate
- */
+* @param {{[string]: Blob}} accountBlobs
+* @param {[AccountInfo]} accountsInfo
+* @param {Date?} fromDate
+*/
 function saveBlobsToFiles(accountBlobs, accountsInfo, fromDate) {
     for (let acc in accountBlobs) {
         let blobUrl = URL.createObjectURL(accountBlobs[acc]);
