@@ -1,5 +1,3 @@
-
-
 // ==UserScript==
 // @name        Wealthsimple export transactions as OFX
 // @namespace   Violentmonkey Scripts
@@ -912,6 +910,12 @@ NEWFILEUID:NONE
             case "REIMBURSEMENT/ATM": {
                 payee = "Wealthsimple";
                 memo = "ATM Reimbursement";
+                trnType = "CREDIT";
+                break;
+            }
+            case "REIMBURSEMENT/CASHBACK": {
+                payee = "Wealthsimple";
+                memo = "Cash back";
                 trnType = "CREDIT";
                 break;
             }
