@@ -42,7 +42,7 @@ function getPageInfo() {
     let pathParts = window.location.pathname.split("/");
     if (pathParts.length === 4 && pathParts[2] === "account-details") {
         // All classes within HTML have been obfuscated/minified, using icons as a starting point, in hope that they don't change that much.
-        const accountSelectorQuery = `div:has(> div > button svg > path[d="M5.363 3.363a.9.9 0 0 1 1.274 0l4 4a.9.9 0 0 1 0 1.274l-4 4a.9.9 0 0 1-1.274-1.274L8.727 8 5.363 4.637a.9.9 0 0 1 0-1.274Z"])`;
+        const accountSelectorQuery = `div:has( > button > div > div > div > svg > path[d="M8 3.875a.9.9 0 1 1 0 1.799.9.9 0 0 1 0-1.799Z"])`;
         info.pageType = "account-details";
         let anchor = document.querySelectorAll(accountSelectorQuery);
         if (anchor.length !== 1) {
@@ -52,17 +52,35 @@ function getPageInfo() {
         info.readyPredicate = () => info.anchor.parentNode.children.length >= 1;
     } else if (pathParts.length === 3 && pathParts[2] === "activity") {
         info.pageType = "activity";
-        let anchor = Array.from(document.querySelectorAll(`h1`)).find(el => el.textContent === "Activity");
+        let anchor = Array.from(document.querySelectorAll(`p`)).find(el => el.textContent === "Activity");
         if (anchor === undefined) {
             return emptyInfo;
         }
-        info.anchor = anchor;
+        info.anchor = anchor.parentNode;
         info.readyPredicate = () => info.anchor.parentNode.children.length >= 1;
     } else {
         // Didn't match any expected page
         return emptyInfo;
     }
     return info;
+}
+
+/**
+ * Global settings object for config options.
+ * These can be toggled in the settings menu.
+ */
+const wsOfxExportSettings = {
+    swapMemoPayee: false,
+    // Add more options as needed
+};
+window.wsOfxExportSettings = wsOfxExportSettings;
+
+const WS_OFX_SETTINGS_KEY = "wsOfxExportSettings";
+
+const loadedSettings = loadWsOfxExportSettings();
+if (loadedSettings) {
+    Object.assign(wsOfxExportSettings, loadedSettings);
+    console.log("[ofx-export] Loaded saved settings");
 }
 
 // ID for quickly verifying if buttons were already injected
@@ -119,10 +137,16 @@ function keepButtonShown() {
  */
 function themeButtons() {
     let buttons = document.querySelectorAll(`button.export-csv-button`);
-    let profileButton = document.querySelector(`button:has(svg > path[d="M12 6a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"])`);
+    let profileButton = document.querySelector('button[aria-label="Search"]');
     for (const button of buttons) {
         button.className = ["export-csv-button", profileButton.className].join(" ");
     }
+
+    let profileStyle = window.getComputedStyle(profileButton);
+    let settings = document.querySelector(`div.export-csv-setting`);
+    settings.style.background = profileStyle.background;
+    settings.style.border = profileStyle.border;
+
 }
 
 /**
@@ -140,7 +164,7 @@ function addButtons(pageInfo) {
     buttonRow.style.marginLeft = "auto";
 
     let buttonRowText = document.createElement("span");
-    buttonRowText.innerText = "Export Transactions as OFX:"; // Changed to OFX
+    buttonRowText.innerText = "Export Transactions as OFX:";
     buttonRow.appendChild(buttonRowText);
 
     const now = new Date();
@@ -164,7 +188,7 @@ function addButtons(pageInfo) {
         exportButton.innerText = button.text;
         exportButton.className = "export-csv-button";
         exportButton.onclick = async () => {
-            console.log("[ofx-export] Fetching account details"); // Changed log prefix
+            console.log("[ofx-export] Fetching account details");
             let accountsInfo = await accountFinancials();
             let accountNicknames = accountsInfo.reduce((acc, v) => {
                 acc[v.id] = v.nickname;
@@ -190,18 +214,133 @@ function addButtons(pageInfo) {
                 transactions = await activityFeedItems(accountIds, button.fromDate);
             }
 
-            let blobs = await transactionsToOfxBlobs(transactions, accountNicknames); // Changed function name
+            let blobs = await transactionsToOfxBlobs(transactions, accountNicknames);
             saveBlobsToFiles(blobs, accountsInfo, button.fromDate);
         };
 
         buttonRow.appendChild(exportButton);
     }
 
+    // Add Settings Button and Menu
+    const settingsWrapper = document.createElement("div");
+    settingsWrapper.style.position = "relative";
+    settingsWrapper.style.display = "inline-block";
+
+    const settingsButton = document.createElement("button");
+    settingsButton.className = "export-csv-button";
+    settingsButton.style.padding = "0.4em 0.6em";
+    settingsButton.title = "Settings";
+
+    // Gear icon SVG
+    settingsButton.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24M19.78 19.78l-4.24-4.24m-5.08-5.08l-4.24-4.24"></path>
+      </svg>
+    `;
+
+    // Settings menu (initially hidden)
+    const settingsMenu = document.createElement("div");
+    settingsMenu.className = "export-csv-setting";
+    settingsMenu.style.position = "absolute";
+    settingsMenu.style.top = "100%";
+    settingsMenu.style.right = "0";
+    settingsMenu.style.marginTop = "0.4em";
+    //settingsMenu.style.background = "#fff";
+    // settingsMenu.style.border = "1px solid #ccc";
+    // settingsMenu.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+    settingsMenu.style.padding = "0.8em 1em";
+    settingsMenu.style.zIndex = "10000";
+    settingsMenu.style.minWidth = "200px";
+    settingsMenu.style.display = "none";
+    settingsMenu.style.borderRadius = "12px";
+    settingsMenu.style.fontSize = "14px";
+
+    // Menu title
+    const menuTitle = document.createElement("div");
+    menuTitle.style.fontWeight = "bold";
+    menuTitle.style.marginBottom = "0.8em";
+    menuTitle.style.fontSize = "14px";
+    menuTitle.textContent = "Export Settings";
+    settingsMenu.appendChild(menuTitle);
+
+    /**
+     * Create a checkbox toggle for a setting
+     */
+    function createSettingToggle(optionKey, label) {
+        const wrapper = document.createElement("label");
+        wrapper.style.display = "flex";
+        wrapper.style.alignItems = "center";
+        wrapper.style.cursor = "pointer";
+        wrapper.style.marginBottom = "0.6em";
+        wrapper.style.userSelect = "none";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = wsOfxExportSettings[optionKey];
+        checkbox.style.marginRight = "0.6em";
+        checkbox.style.cursor = "pointer";
+
+        checkbox.addEventListener("change", () => {
+            wsOfxExportSettings[optionKey] = checkbox.checked;
+            saveWsOfxExportSettings(); // <-- Save after each toggle
+            console.log(`[ofx-export] ${label} = ${checkbox.checked}`);
+        });
+
+        wrapper.appendChild(checkbox);
+        wrapper.appendChild(document.createTextNode(label));
+
+        return wrapper;
+    }
+
+    // Add setting options
+    settingsMenu.appendChild(createSettingToggle("swapMemoPayee", "Swap memo/payee"));
+
+    // Close menu when clicking outside
+    document.addEventListener("mousedown", (e) => {
+        if (!settingsWrapper.contains(e.target)) {
+            settingsMenu.style.display = "none";
+        }
+    });
+
+    // Toggle menu on button click
+    settingsButton.onclick = (e) => {
+        e.stopPropagation();
+        settingsMenu.style.display = settingsMenu.style.display === "none" ? "block" : "none";
+    };
+
+    settingsWrapper.appendChild(settingsButton);
+    settingsWrapper.appendChild(settingsMenu);
+    buttonRow.appendChild(settingsWrapper);
+
     pageInfo.anchor.after(buttonRow);
     pageInfo.anchor.parentNode.style.gap = "1em";
     pageInfo.anchor.style.marginLeft = "0";
 
     themeButtons();
+}
+
+/**
+ * Load settings from localStorage
+ * @returns {Object|null}
+ */
+function loadWsOfxExportSettings() {
+    const raw = localStorage.getItem(WS_OFX_SETTINGS_KEY);
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch (e) {
+        console.error("[ofx-export] Failed to parse saved settings:", e);
+        return null;
+    }
+}
+
+/**
+ * Save current settings to localStorage
+ */
+function saveWsOfxExportSettings() {
+    localStorage.setItem(WS_OFX_SETTINGS_KEY, JSON.stringify(wsOfxExportSettings));
+    console.log("[ofx-export] Settings saved");
 }
 
 /**
@@ -412,6 +551,7 @@ async function activityFeedItems(accountIds, startDate) {
     let transactions = [];
     let hasNextPage = true;
     let cursor = undefined;
+
     while (hasNextPage) {
         let respJson = await GM.xmlHttpRequest({
             url: "https://my.wealthsimple.com/graphql",
@@ -673,8 +813,8 @@ async function transactionsToOfxBlobs(transactions, accountNicknames) {
 
         // Check if any transaction in this account is a credit card transaction
         const hasCreditCardTransactions = accTransactions[acc].some(t =>
-            t.type === "CREDIT_CARD" || (t.type && t.type.startsWith("CREDIT_CARD"))
-        );
+                                                                    t.type === "CREDIT_CARD" || (t.type && t.type.startsWith("CREDIT_CARD"))
+                                                                   );
 
         if (hasCreditCardTransactions) {
             accountType = "CREDIT_CARD"; // Override with credit card type
@@ -700,8 +840,8 @@ async function transactionsToOfxBlobs(transactions, accountNicknames) {
 function determineOfxAccountType(accountType, transactions) {
     // First check if any transactions indicate this is a credit card account
     const hasCreditCardTransactions = transactions && transactions.some(t =>
-        t.type === "CREDIT_CARD" || (t.type && t.type.startsWith("CREDIT_CARD"))
-    );
+                                                                        t.type === "CREDIT_CARD" || (t.type && t.type.startsWith("CREDIT_CARD"))
+                                                                       );
 
     if (hasCreditCardTransactions) {
         return "CREDITCARD";
@@ -1002,6 +1142,11 @@ NEWFILEUID:NONE
                 trnType = "CREDIT";
                 break;
             }
+            case "DEPOSIT/CHEQUE": {
+                memo = `Cheque deposit`;
+                trnType = "DEP";
+                break;
+            }
             case "DEPOSIT/AFT": {
                 payee = transaction.aftOriginatorName;
                 memo = `Direct deposit from ${transaction.aftOriginatorName}`;
@@ -1075,6 +1220,10 @@ NEWFILEUID:NONE
                 console.log(transaction);
                 continue;
             }
+        }
+
+        if (wsOfxExportSettings .swapMemoPayee) {
+            [payee, memo] = [memo, payee];
         }
 
         // Format amount
