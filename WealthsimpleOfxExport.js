@@ -42,7 +42,7 @@ function getPageInfo() {
     let pathParts = window.location.pathname.split("/");
     if (pathParts.length === 4 && pathParts[2] === "account-details") {
         // All classes within HTML have been obfuscated/minified, using icons as a starting point, in hope that they don't change that much.
-        const accountSelectorQuery = `div:has( > button > div > div > div > svg > path[d="M8 3.875a.9.9 0 1 1 0 1.799.9.9 0 0 1 0-1.799Z"])`;
+        const accountSelectorQuery = `div:has( > button > div > div > div > svg > path[d="M6.363 3.363a.9.9 0 0 1 1.274 0l4 4a.9.9 0 0 1 0 1.274l-4 4a.9.9 0 0 1-1.274-1.274L9.727 8 6.363 4.637a.9.9 0 0 1 0-1.274Z"])`;
         info.pageType = "account-details";
         let anchor = document.querySelectorAll(accountSelectorQuery);
         if (anchor.length !== 1) {
@@ -52,7 +52,7 @@ function getPageInfo() {
         info.readyPredicate = () => info.anchor.parentNode.children.length >= 1;
     } else if (pathParts.length === 3 && pathParts[2] === "activity") {
         info.pageType = "activity";
-        let anchor = Array.from(document.querySelectorAll(`p`)).find(el => el.textContent === "Activity");
+        let anchor = Array.from(document.querySelectorAll(`h1`)).find(el => el.textContent === "Activity");
         if (anchor === undefined) {
             return emptyInfo;
         }
