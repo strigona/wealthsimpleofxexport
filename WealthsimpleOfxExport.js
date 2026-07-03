@@ -171,7 +171,7 @@ function addButtons(pageInfo) {
     const buttons = [
         {
             text: "Last 2 Weeks",
-            fromDate: new Date(new Date() - 1000 * 60 * 60 * 24 * 14),
+            fromDate: new Date(new Date() - 1000 * 60 * 60 * 24 * 7 * 2),
         },
         {
             text: "This Month",
@@ -1045,6 +1045,12 @@ NEWFILEUID:NONE
                 payee = "Wealthsimple";
                 memo = "Interest";
                 trnType = "INT";
+                break;
+            }
+            case "PROMOTION/INCENTIVE_BONUS": {
+                payee = "Wealthsimple";
+                memo = `Promotion discount`;
+                trnType = "DEP";
                 break;
             }
             case "REIMBURSEMENT/ATM": {
